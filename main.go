@@ -8,10 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -23,7 +23,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
@@ -168,12 +167,12 @@ var (
 
 func renderHeader(hostCount int, containerCount int) string {
 	lines := []string{
-		`                     .__    .__`,
-		`_____    ______ _____|  |__ |__|`,
-		`\__  \  /  ___//  ___/  |  \|  |`,
-		` / __ \_\___ \ \___ \|   Y  \  |`,
-		`(____  /____  >____  >___|  /__|`,
-		`     \/     \/     \/     \/    `,
+		`   _____                  ___ ___         `,
+		`  /  _  \   ______ ______/   |   \  ____  `,
+		` /  /_\  \ /  ___//  ___/    ~    \/  _ \ `,
+		`/    |    \\___ \ \___ \\    Y    (  <_> )`,
+		`\____|__  /____  >____  >\___|_  / \____/ `,
+		`        \/     \/     \/       \/         `,
 	}
 
 	colors := []lipgloss.Color{
@@ -186,17 +185,30 @@ func renderHeader(hostCount int, containerCount int) string {
 	}
 
 	var logo strings.Builder
+	maxLineWidth := 0
 	for i, line := range lines {
 		style := lipgloss.NewStyle().Foreground(colors[i]).Bold(true)
 		logo.WriteString("  " + style.Render(line) + "\n")
+		if w := lipgloss.Width(line); w > maxLineWidth {
+			maxLineWidth = w
+		}
 	}
+	taglinePlain := "Another SSH Organizer"
+	tagline := lipgloss.NewStyle().
+		Foreground(colorDimText).
+		Render("Another " + lipgloss.NewStyle().Italic(true).Render("SSH") + " Organizer")
+	taglinePad := (maxLineWidth + 2) - lipgloss.Width(taglinePlain)
+	if taglinePad < 0 {
+		taglinePad = 0
+	}
+	tagline = strings.Repeat(" ", taglinePad) + tagline
 
 	stats := headerDimStyle.Render(fmt.Sprintf("  %d hosts", hostCount))
 	if containerCount > 0 {
 		stats += headerDimStyle.Render(fmt.Sprintf(" · %d containers", containerCount))
 	}
 
-	return logo.String() + stats + "\n"
+	return logo.String() + tagline + "\n" + stats + "\n"
 }
 
 // --- Help Bar ---
@@ -209,7 +221,6 @@ func renderListHelp() string {
 	entries := []string{
 		helpEntry("n", "new"),
 		helpEntry("e", "edit"),
-		helpEntry("d", "delete"),
 		helpEntry("enter", "connect"),
 		helpEntry("/", "filter"),
 		helpEntry("space", "expand"),
@@ -337,6 +348,7 @@ type Host struct {
 	Port         string `json:"port"`
 	IdentityFile string `json:"identity_file,omitempty"`
 	Password     string `json:"password,omitempty"`
+	PasswordRef  string `json:"password_ref,omitempty"`
 	GroupID      string `json:"group_id,omitempty"`
 
 	// Docker Support
@@ -391,11 +403,23 @@ func getConfigPath() string {
 	if err != nil {
 		return "hosts.json"
 	}
+	return filepath.Join(home, ".config", "assho", "hosts.json")
+}
+
+func getLegacyConfigPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "hosts.json"
+	}
 	return filepath.Join(home, ".config", "asshi", "hosts.json")
 }
 
 func shouldPersistPassword() bool {
-	value := strings.ToLower(strings.TrimSpace(os.Getenv("ASSHI_STORE_PASSWORD")))
+	value := strings.ToLower(strings.TrimSpace(os.Getenv("ASSHO_STORE_PASSWORD")))
+	if value == "" {
+		// Backward compatibility with old env name.
+		value = strings.ToLower(strings.TrimSpace(os.Getenv("ASSHI_STORE_PASSWORD")))
+	}
 	if value == "" {
 		return true
 	}
@@ -403,8 +427,81 @@ func shouldPersistPassword() bool {
 }
 
 func allowInsecureTest() bool {
-	value := strings.ToLower(strings.TrimSpace(os.Getenv("ASSHI_INSECURE_TEST")))
+	value := strings.ToLower(strings.TrimSpace(os.Getenv("ASSHO_INSECURE_TEST")))
+	if value == "" {
+		// Backward compatibility with old env name.
+		value = strings.ToLower(strings.TrimSpace(os.Getenv("ASSHI_INSECURE_TEST")))
+	}
 	return value == "1" || value == "true" || value == "yes"
+}
+
+const (
+	configVersion     = 2
+	secretServiceName = "assho"
+)
+
+func commandExists(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
+}
+
+func storePasswordSecret(ref, password string) error {
+	if ref == "" || password == "" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	switch runtime.GOOS {
+	case "darwin":
+		cmd := exec.CommandContext(ctx, "security", "add-generic-password", "-U", "-a", ref, "-s", secretServiceName, "-w", password)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("security store failed: %v (%s)", err, strings.TrimSpace(string(output)))
+		}
+		return nil
+	case "linux":
+		if !commandExists("secret-tool") {
+			return fmt.Errorf("secret-tool not installed")
+		}
+		cmd := exec.CommandContext(ctx, "secret-tool", "store", "--label=assho password", "service", secretServiceName, "account", ref)
+		cmd.Stdin = strings.NewReader(password)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("secret-tool store failed: %v (%s)", err, strings.TrimSpace(string(output)))
+		}
+		return nil
+	default:
+		return fmt.Errorf("keychain backend unsupported on %s", runtime.GOOS)
+	}
+}
+
+func lookupPasswordSecret(ref string) (string, error) {
+	if ref == "" {
+		return "", nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	switch runtime.GOOS {
+	case "darwin":
+		cmd := exec.CommandContext(ctx, "security", "find-generic-password", "-a", ref, "-s", secretServiceName, "-w")
+		output, err := cmd.Output()
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(output)), nil
+	case "linux":
+		if !commandExists("secret-tool") {
+			return "", fmt.Errorf("secret-tool not installed")
+		}
+		cmd := exec.CommandContext(ctx, "secret-tool", "lookup", "service", secretServiceName, "account", ref)
+		output, err := cmd.Output()
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(output)), nil
+	default:
+		return "", fmt.Errorf("keychain backend unsupported on %s", runtime.GOOS)
+	}
 }
 
 func sanitizeHostsForSave(hosts []Host) []Host {
@@ -413,6 +510,13 @@ func sanitizeHostsForSave(hosts []Host) []Host {
 		sanitized[i] = h
 		if !shouldPersistPassword() {
 			sanitized[i].Password = ""
+			sanitized[i].PasswordRef = ""
+		} else if sanitized[i].Password != "" {
+			// Prefer keychain storage; fall back to plaintext if unavailable.
+			if err := storePasswordSecret(sanitized[i].ID, sanitized[i].Password); err == nil {
+				sanitized[i].PasswordRef = sanitized[i].ID
+				sanitized[i].Password = ""
+			}
 		}
 		if len(h.Containers) > 0 {
 			sanitized[i].Containers = sanitizeHostsForSave(h.Containers)
@@ -458,33 +562,80 @@ func ensureGroupIDs(groups []Group) ([]Group, bool) {
 	return groups, changed
 }
 
-type configFile struct {
-	Groups []Group `json:"groups,omitempty"`
-	Hosts  []Host  `json:"hosts,omitempty"`
+func hydrateHostPasswords(hosts []Host) []Host {
+	for i := range hosts {
+		if hosts[i].Password == "" && hosts[i].PasswordRef != "" {
+			if secret, err := lookupPasswordSecret(hosts[i].PasswordRef); err == nil {
+				hosts[i].Password = secret
+			}
+		}
+		if len(hosts[i].Containers) > 0 {
+			hosts[i].Containers = hydrateHostPasswords(hosts[i].Containers)
+		}
+	}
+	return hosts
 }
 
-func loadConfig() ([]Group, []Host) {
+type configFile struct {
+	Version int     `json:"version"`
+	Groups  []Group `json:"groups,omitempty"`
+	Hosts   []Host  `json:"hosts,omitempty"`
+}
+
+func loadConfig() ([]Group, []Host, error) {
 	path := getConfigPath()
+	loadedFromLegacy := false
 	f, err := os.Open(path)
 	if err != nil {
-		// Return default/example data if no config exists
-		return []Group{}, []Host{
-			{ID: newHostID(), Alias: "Localhost", Hostname: "127.0.0.1", User: "root", Port: "22"},
+		if os.IsNotExist(err) {
+			legacyPath := getLegacyConfigPath()
+			if legacyPath != path {
+				if legacyFile, legacyErr := os.Open(legacyPath); legacyErr == nil {
+					f = legacyFile
+					loadedFromLegacy = true
+				} else if !os.IsNotExist(legacyErr) {
+					return []Group{}, []Host{}, legacyErr
+				}
+			}
+			if f == nil {
+				// Return default/example data if no config exists
+				return []Group{}, []Host{
+					{ID: newHostID(), Alias: "Localhost", Hostname: "127.0.0.1", User: "root", Port: "22"},
+				}, nil
+			}
+		} else {
+			return []Group{}, []Host{}, err
 		}
 	}
 	defer f.Close()
 
-	bytes, _ := io.ReadAll(f)
+	bytes, readErr := io.ReadAll(f)
+	if readErr != nil {
+		return []Group{}, []Host{}, readErr
+	}
 
 	var cfg configFile
-	if err := json.Unmarshal(bytes, &cfg); err == nil && (len(cfg.Hosts) > 0 || len(cfg.Groups) > 0) {
-		return cfg.Groups, cfg.Hosts
+	if err := json.Unmarshal(bytes, &cfg); err == nil {
+		if cfg.Version > 0 || len(cfg.Hosts) > 0 || len(cfg.Groups) > 0 {
+			if cfg.Version == 0 {
+				cfg.Version = 1
+			}
+			if loadedFromLegacy {
+				_ = saveConfig(cfg.Groups, cfg.Hosts)
+			}
+			return cfg.Groups, hydrateHostPasswords(cfg.Hosts), nil
+		}
 	}
 
 	// Backward compatibility with old hosts-only format.
 	var hosts []Host
-	_ = json.Unmarshal(bytes, &hosts)
-	return []Group{}, hosts
+	if err := json.Unmarshal(bytes, &hosts); err == nil {
+		if loadedFromLegacy {
+			_ = saveConfig([]Group{}, hosts)
+		}
+		return []Group{}, hydrateHostPasswords(hosts), nil
+	}
+	return []Group{}, []Host{}, fmt.Errorf("invalid config format")
 }
 
 func saveConfig(groups []Group, hosts []Host) error {
@@ -492,19 +643,29 @@ func saveConfig(groups []Group, hosts []Host) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
-	f, err := os.Create(path)
+	tmpPath := path + ".tmp"
+	f, err := os.Create(tmpPath)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sanitizedHosts := sanitizeHostsForSave(hosts)
 	cfg := configFile{
-		Groups: groups,
-		Hosts:  sanitizedHosts,
+		Version: configVersion,
+		Groups:  groups,
+		Hosts:   sanitizedHosts,
 	}
-	bytes, _ := json.MarshalIndent(cfg, "", "  ")
-	_, err = f.Write(bytes)
-	return err
+	bytes, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(bytes); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
 
 // --- Main Model ---
@@ -515,32 +676,42 @@ const (
 	stateList state = iota
 	stateForm
 	stateFilePicker
+	stateGroupPrompt
 )
 
 type model struct {
-	list         list.Model
-	rawGroups    []Group
-	rawHosts     []Host // Source of truth for tree structure
-	inputs       []textinput.Model
-	filepicker   filepicker.Model
-	spinner      spinner.Model
-	focusIndex   int
-	state        state
-	selectedHost *Host // For editing
-	err          error
-	quitting     bool
-	sshToRun     *Host  // If set, will exec ssh on quit
-	testStatus   string // Status message for connection test
-	testResult   bool   // true = success, false = failure
-	scanning     bool   // true while Docker scan in progress
-	testing      bool   // true while connection test in progress
-	width        int    // terminal width
-	height       int    // terminal height
-	formError    string // inline form validation/action error
-	keyPickFocus bool   // true when [Pick] button on key field is focused
-	groupOptions []string
-	groupIndex   int
-	groupCustom  bool
+	list            list.Model
+	rawGroups       []Group
+	rawHosts        []Host // Source of truth for tree structure
+	inputs          []textinput.Model
+	groupInput      textinput.Model
+	filepicker      filepicker.Model
+	spinner         spinner.Model
+	focusIndex      int
+	state           state
+	selectedHost    *Host // For editing
+	err             error
+	quitting        bool
+	sshToRun        *Host  // If set, will exec ssh on quit
+	testStatus      string // Status message for connection test
+	testResult      bool   // true = success, false = failure
+	scanning        bool   // true while Docker scan in progress
+	testing         bool   // true while connection test in progress
+	width           int    // terminal width
+	height          int    // terminal height
+	formError       string // inline form validation/action error
+	keyPickFocus    bool   // true when [Pick] button on key field is focused
+	groupOptions    []string
+	groupIndex      int
+	groupCustom     bool
+	groupAction     string // create|rename
+	groupTarget     string // group id for rename
+	deleteFocus     bool   // true when Delete Host button is focused in edit form
+	deleteArmed     bool   // true when delete confirmation is armed
+	listDeleteArmed bool
+	listDeleteID    string
+	listDeleteType  string // host|group
+	listDeleteLabel string
 }
 
 type scanDockerMsg struct {
@@ -694,7 +865,7 @@ func newFormInputs() []textinput.Model {
 		t.PromptStyle = lipgloss.NewStyle().Foreground(colorHighlight).Bold(true)
 		t.TextStyle = lipgloss.NewStyle().Foreground(colorText)
 		t.Placeholder = placeholders[i]
-		t.PlaceholderStyle = lipgloss.NewStyle().Foreground(colorSubtle)
+		t.PlaceholderStyle = lipgloss.NewStyle().Foreground(colorDimText)
 		if i == 5 {
 			t.EchoMode = textinput.EchoPassword
 			t.EchoCharacter = '•'
@@ -706,7 +877,7 @@ func newFormInputs() []textinput.Model {
 }
 
 func initialModel() model {
-	groups, hosts := loadConfig()
+	groups, hosts, loadErr := loadConfig()
 	var hostsUpdated bool
 	hosts, hostsUpdated = ensureHostIDs(hosts)
 	var groupsUpdated bool
@@ -726,6 +897,13 @@ func initialModel() model {
 	l.Styles.Title = titleStyle
 
 	inputs := newFormInputs()
+	groupInput := textinput.New()
+	groupInput.Prompt = "  Group Name  "
+	groupInput.Placeholder = "e.g. prod"
+	groupInput.PromptStyle = lipgloss.NewStyle().Foreground(colorHighlight).Bold(true)
+	groupInput.TextStyle = lipgloss.NewStyle().Foreground(colorText)
+	groupInput.PlaceholderStyle = lipgloss.NewStyle().Foreground(colorSubtle)
+	groupInput.Cursor.Style = lipgloss.NewStyle().Foreground(colorSecondary)
 
 	fp := filepicker.New()
 	fp.AllowedTypes = []string{} // All files
@@ -744,9 +922,11 @@ func initialModel() model {
 		rawGroups:  groups,
 		rawHosts:   hosts,
 		inputs:     inputs,
+		groupInput: groupInput,
 		filepicker: fp,
 		spinner:    sp,
 		state:      stateList,
+		err:        loadErr,
 	}
 }
 
@@ -871,7 +1051,7 @@ func formatTestStatus(err error) (string, bool) {
 	var keyErr *knownhosts.KeyError
 	if errors.As(err, &keyErr) {
 		if len(keyErr.Want) == 0 {
-			return "Host key is unknown. Run `ssh <host>` once or set ASSHI_INSECURE_TEST=1 to bypass for testing.", false
+			return "Host key is unknown. Run `ssh <host>` once or set ASSHO_INSECURE_TEST=1 to bypass for testing.", false
 		}
 		return "Host key mismatch in ~/.ssh/known_hosts. Refusing to connect.", false
 	}
@@ -899,96 +1079,54 @@ func testConnection(h Host) tea.Cmd {
 			}
 		}
 
-		config := &ssh.ClientConfig{
-			User:            user,
-			HostKeyCallback: hostKeyCallback(),
-			Timeout:         5 * time.Second,
+		args := []string{
+			"-o", "ConnectTimeout=5",
+			"-o", "NumberOfPasswordPrompts=1",
+			"-o", "PreferredAuthentications=publickey,password,keyboard-interactive",
 		}
-
-		var auths []ssh.AuthMethod
-		var authIssues []string
-
-		// 1. Password
-		if h.Password != "" {
-			auths = append(auths, ssh.Password(h.Password))
+		if allowInsecureTest() {
+			args = append(args, "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null")
 		} else {
-			authIssues = append(authIssues, "password not set")
+			args = append(args, "-o", "StrictHostKeyChecking=yes")
 		}
-
-		// 2. Identity File
+		if user != "" {
+			args = append(args, "-l", user)
+		}
+		if port != "" {
+			args = append(args, "-p", port)
+		}
 		if h.IdentityFile != "" {
-			keyPath := expandPath(h.IdentityFile)
-			key, err := os.ReadFile(keyPath)
+			args = append(args, "-i", expandPath(h.IdentityFile))
+		}
+		args = append(args, h.Hostname, "exit")
+
+		binary := "ssh"
+		cmdArgs := args
+		// Prefer key-based auth when an identity file is configured.
+		// Only force sshpass when password is set and no key file is provided.
+		if h.Password != "" && strings.TrimSpace(h.IdentityFile) == "" {
+			sshpassPath, err := exec.LookPath("sshpass")
 			if err != nil {
-				authIssues = append(authIssues, fmt.Sprintf("identity file read failed: %s", err))
-			} else {
-				signer, err := ssh.ParsePrivateKey(key)
-				if err != nil {
-					var passErr *ssh.PassphraseMissingError
-					if errors.As(err, &passErr) {
-						authIssues = append(authIssues, "identity file is encrypted; use ssh-agent")
-					} else {
-						authIssues = append(authIssues, fmt.Sprintf("identity file parse failed: %s", err))
-					}
-				} else {
-					auths = append(auths, ssh.PublicKeys(signer))
-				}
+				return testConnectionMsg{err: fmt.Errorf("password provided but sshpass not installed")}
 			}
-		} else {
-			authIssues = append(authIssues, "identity file not set")
+			binary = sshpassPath
+			cmdArgs = append([]string{"-p", h.Password, "ssh"}, args...)
 		}
 
-		// 3. SSH Agent (if available)
-		var agentConn net.Conn
-		if socket := os.Getenv("SSH_AUTH_SOCK"); socket != "" {
-			conn, err := net.Dial("unix", socket)
-			if err == nil {
-				agentConn = conn
-				ag := agent.NewClient(conn)
-				if signers, err := ag.Signers(); err == nil {
-					if len(signers) > 0 {
-						auths = append(auths, ssh.PublicKeys(signers...))
-					} else {
-						authIssues = append(authIssues, "ssh-agent has no keys loaded")
-					}
-				} else {
-					authIssues = append(authIssues, fmt.Sprintf("ssh-agent error: %s", err))
-				}
-			} else {
-				authIssues = append(authIssues, fmt.Sprintf("ssh-agent socket error: %s", err))
-			}
-		} else {
-			authIssues = append(authIssues, "SSH_AUTH_SOCK not set")
-		}
-		if agentConn != nil {
-			defer agentConn.Close()
-		}
-
-		// If no auth provided, just check TCP connectivity
-		if len(auths) == 0 {
-			conn, err := net.DialTimeout("tcp", net.JoinHostPort(h.Hostname, port), 2*time.Second)
-			if err != nil {
-				return testConnectionMsg{err: fmt.Errorf("unreachable: %v", err)}
-			}
-			conn.Close()
-			msg := "reachable, but no auth provided"
-			if len(authIssues) > 0 {
-				msg = msg + " (" + strings.Join(authIssues, "; ") + ")"
-			}
-			return testConnectionMsg{err: fmt.Errorf("%s", msg)}
-		}
-
-		config.Auth = auths
-		client, err := ssh.Dial("tcp", net.JoinHostPort(h.Hostname, port), config)
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, binary, cmdArgs...)
+		output, err := cmd.CombinedOutput()
 		if err != nil {
-			return testConnectionMsg{err: err}
+			if ctx.Err() == context.DeadlineExceeded {
+				return testConnectionMsg{err: fmt.Errorf("connection test timed out")}
+			}
+			out := strings.TrimSpace(string(output))
+			if out == "" {
+				out = err.Error()
+			}
+			return testConnectionMsg{err: fmt.Errorf("%s", out)}
 		}
-		defer client.Close()
-
-		// Optional: Run a dummy command?
-		// session, err := client.NewSession()
-		// if err == nil { defer session.Close(); session.Run("exit") }
-
 		return testConnectionMsg{err: nil}
 	}
 }
@@ -1031,16 +1169,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.list.FilterState() == list.Filtering {
 				break // Let the list handle input if filtering
 			}
+			if m.listDeleteArmed && msg.String() != "d" && msg.String() != "esc" {
+				m.clearListDeleteConfirm()
+			}
 			switch msg.String() {
 			case "ctrl+c":
 				m.quitting = true
 				return m, tea.Quit
+			case "esc":
+				if m.listDeleteArmed {
+					m.clearListDeleteConfirm()
+					return m, nil
+				}
 			case "q":
 				if m.list.FilterState() != list.Filtering {
 					m.quitting = true
 					return m, tea.Quit
 				}
 			case "n":
+				m.clearListDeleteConfirm()
 				m.state = stateForm
 				m.selectedHost = nil // New host
 				m.inputs = newFormInputs()
@@ -1048,6 +1195,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.buildGroupOptions("")
 				m.formError = ""
 				m.keyPickFocus = false
+				m.deleteFocus = false
+				m.deleteArmed = false
 				return m, m.focusInputs()
 			case "enter", "space":
 				switch i := m.list.SelectedItem().(type) {
@@ -1061,6 +1210,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				case Host:
 					if i.IsContainer {
+						m.clearListDeleteConfirm()
 						m.sshToRun = &i
 						return m, tea.Quit
 					}
@@ -1074,6 +1224,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					}
 					if msg.String() == "enter" {
+						m.clearListDeleteConfirm()
 						m.sshToRun = &i
 						return m, tea.Quit
 					}
@@ -1146,34 +1297,40 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "e":
 				if i, ok := m.list.SelectedItem().(Host); ok && !i.IsContainer {
+					m.clearListDeleteConfirm()
 					m.state = stateForm
 					m.selectedHost = &i
 					m.inputs = newFormInputs()
 					m.populateForm(i)
 					m.formError = ""
 					m.keyPickFocus = false
+					m.deleteFocus = false
+					m.deleteArmed = false
 					return m, m.focusInputs()
 				}
 			case "d":
 				// Delete
 				if index := m.list.Index(); index >= 0 && len(m.list.Items()) > 0 {
 					if g, ok := m.list.SelectedItem().(groupItem); ok {
-						for idx := range m.rawGroups {
-							if m.rawGroups[idx].ID == g.ID {
-								m.rawGroups = append(m.rawGroups[:idx], m.rawGroups[idx+1:]...)
-								break
-							}
+						if !m.listDeleteArmed || m.listDeleteID != g.ID || m.listDeleteType != "group" {
+							m.listDeleteArmed = true
+							m.listDeleteID = g.ID
+							m.listDeleteType = "group"
+							m.listDeleteLabel = g.Name
+							return m, nil
 						}
-						for i := range m.rawHosts {
-							if m.rawHosts[i].GroupID == g.ID {
-								m.rawHosts[i].GroupID = ""
-							}
-						}
-						m.list.SetItems(flattenHosts(m.rawGroups, m.rawHosts))
-						m.save()
+						m.deleteGroupByID(g.ID)
+						m.clearListDeleteConfirm()
 						return m, nil
 					}
 					if i, ok := m.list.SelectedItem().(Host); ok {
+						if !m.listDeleteArmed || m.listDeleteID != i.ID || m.listDeleteType != "host" {
+							m.listDeleteArmed = true
+							m.listDeleteID = i.ID
+							m.listDeleteType = "host"
+							m.listDeleteLabel = i.Alias
+							return m, nil
+						}
 						for idx, h := range m.rawHosts {
 							if h.ID == i.ID {
 								m.rawHosts = append(m.rawHosts[:idx], m.rawHosts[idx+1:]...)
@@ -1182,7 +1339,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 						m.list.SetItems(flattenHosts(m.rawGroups, m.rawHosts))
 						m.save()
+						m.clearListDeleteConfirm()
 					}
+				}
+			case "g":
+				m.openGroupPrompt("create", "", "")
+				return m, nil
+			case "r":
+				if g, ok := m.list.SelectedItem().(groupItem); ok {
+					m.openGroupPrompt("rename", g.ID, g.Name)
+					return m, nil
+				}
+			case "x":
+				if g, ok := m.list.SelectedItem().(groupItem); ok {
+					m.deleteGroupByID(g.ID)
+					return m, nil
 				}
 			}
 		} else if m.state == stateFilePicker {
@@ -1190,6 +1361,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc", "q":
 				m.state = stateForm
 				m.keyPickFocus = false
+				m.deleteFocus = false
+				m.deleteArmed = false
 				return m, m.focusInputs()
 			}
 		} else if m.state == stateForm {
@@ -1209,13 +1382,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.testing = true
 				return m, testConnection(h)
 			case "esc":
+				if m.deleteFocus && m.deleteArmed {
+					m.deleteArmed = false
+					return m, nil
+				}
 				m.state = stateList
 				m.testStatus = ""
 				m.formError = ""
 				m.keyPickFocus = false
+				m.deleteFocus = false
+				m.deleteArmed = false
 				return m, nil
 			case "tab", "down":
-				if m.focusIndex == 6 && !m.groupCustom {
+				isTab := msg.String() == "tab"
+				if m.deleteFocus {
+					m.deleteArmed = false
+					return m, nil
+				}
+				if m.focusIndex == 6 && !m.groupCustom && !isTab {
 					if len(m.groupOptions) > 0 {
 						m.groupIndex = (m.groupIndex + 1) % len(m.groupOptions)
 						m.applyGroupSelectionToInput()
@@ -1233,12 +1417,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.focusIndex++
 				if m.focusIndex >= len(m.inputs) {
+					if m.selectedHost != nil && isTab {
+						m.focusIndex = len(m.inputs) - 1
+						m.deleteFocus = true
+						m.deleteArmed = false
+						for i := range m.inputs {
+							m.inputs[i].Blur()
+							m.inputs[i].PromptStyle = lipgloss.NewStyle().Foreground(colorMuted)
+							m.inputs[i].TextStyle = lipgloss.NewStyle().Foreground(colorText)
+						}
+						return m, nil
+					}
 					m.focusIndex = 0
 				}
 				m.keyPickFocus = false
+				m.deleteFocus = false
+				m.deleteArmed = false
 				return m, m.focusInputs()
 			case "shift+tab", "up":
-				if m.focusIndex == 6 && !m.groupCustom {
+				isShiftTab := msg.String() == "shift+tab"
+				if m.deleteFocus {
+					m.deleteFocus = false
+					m.deleteArmed = false
+					m.focusIndex = len(m.inputs) - 1
+					return m, m.focusInputs()
+				}
+				if m.focusIndex == 6 && !m.groupCustom && !isShiftTab {
 					if len(m.groupOptions) > 0 {
 						m.groupIndex--
 						if m.groupIndex < 0 {
@@ -1262,8 +1466,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.focusIndex = len(m.inputs) - 1
 				}
 				m.keyPickFocus = false
+				m.deleteFocus = false
+				m.deleteArmed = false
 				return m, m.focusInputs()
 			case "enter":
+				if m.deleteFocus && m.selectedHost != nil {
+					if !m.deleteArmed {
+						m.deleteArmed = true
+						return m, nil
+					}
+					for idx, h := range m.rawHosts {
+						if h.ID == m.selectedHost.ID {
+							m.rawHosts = append(m.rawHosts[:idx], m.rawHosts[idx+1:]...)
+							break
+						}
+					}
+					m.list.SetItems(flattenHosts(m.rawGroups, m.rawHosts))
+					m.save()
+					m.state = stateList
+					m.deleteFocus = false
+					m.deleteArmed = false
+					return m, nil
+				}
 				if m.focusIndex == 4 && m.keyPickFocus {
 					m.state = stateFilePicker
 					m.keyPickFocus = false
@@ -1284,12 +1508,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.formError = ""
 					m.keyPickFocus = false
+					m.deleteFocus = false
+					m.deleteArmed = false
 					m.state = stateList
 					return m, nil
 				}
 				m.focusIndex++
 				m.formError = ""
 				m.keyPickFocus = false
+				m.deleteFocus = false
+				m.deleteArmed = false
 				return m, m.focusInputs()
 			case "left":
 				if m.focusIndex == 6 && !m.groupCustom {
@@ -1314,6 +1542,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.focusIndex == 4 && m.keyPickFocus {
 					return m, nil
 				}
+				if m.deleteFocus {
+					m.deleteArmed = false
+					return m, nil
+				}
 				if m.focusIndex == 6 && !m.groupCustom {
 					return m, nil
 				}
@@ -1322,6 +1554,48 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.inputs[m.focusIndex], cmd = m.inputs[m.focusIndex].Update(msg)
 					return m, cmd
 				}
+			}
+		} else if m.state == stateGroupPrompt {
+			switch msg.String() {
+			case "esc":
+				m.state = stateList
+				m.groupAction = ""
+				m.groupTarget = ""
+				return m, nil
+			case "enter":
+				name := strings.TrimSpace(m.groupInput.Value())
+				if name == "" {
+					m.formError = "group name is required"
+					return m, nil
+				}
+				if idx := findGroupByName(m.rawGroups, name); idx != -1 {
+					if m.groupAction == "rename" && m.rawGroups[idx].ID == m.groupTarget {
+						// no-op rename to same value
+					} else {
+						m.formError = "group name already exists"
+						return m, nil
+					}
+				}
+				if m.groupAction == "create" {
+					m.rawGroups = append(m.rawGroups, Group{ID: newHostID(), Name: name, Expanded: true})
+				} else if m.groupAction == "rename" {
+					for i := range m.rawGroups {
+						if m.rawGroups[i].ID == m.groupTarget {
+							m.rawGroups[i].Name = name
+							break
+						}
+					}
+				}
+				m.list.SetItems(flattenHosts(m.rawGroups, m.rawHosts))
+				m.save()
+				m.state = stateList
+				m.groupAction = ""
+				m.groupTarget = ""
+				m.formError = ""
+				return m, nil
+			default:
+				m.groupInput, cmd = m.groupInput.Update(msg)
+				return m, cmd
 			}
 		}
 	}
@@ -1353,6 +1627,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.inputs[m.focusIndex], cmd = m.inputs[m.focusIndex].Update(msg)
 			cmds = append(cmds, cmd)
 		}
+	} else if m.state == stateGroupPrompt {
+		m.groupInput, cmd = m.groupInput.Update(msg)
+		cmds = append(cmds, cmd)
 	}
 
 	return m, tea.Batch(cmds...)
@@ -1370,8 +1647,15 @@ func (m model) View() string {
 			scanStatus = "\n " + m.spinner.View() + " " +
 				lipgloss.NewStyle().Foreground(colorSecondary).Render("Scanning containers...") + "\n"
 		}
+		var deleteStatus string
+		if m.listDeleteArmed {
+			deleteStatus = "\n " + testFailStyle.Render("Press d again to delete "+m.listDeleteType+": "+m.listDeleteLabel+" (Esc to cancel)") + "\n"
+		}
 
-		content := header + m.list.View() + scanStatus
+		content := header + m.list.View() + scanStatus + deleteStatus
+		if m.err != nil {
+			content += "\n" + testFailStyle.Render(" Config warning: "+m.err.Error())
+		}
 		help := "\n" + renderListHelp()
 		return appStyle.Render(content + help)
 	}
@@ -1380,6 +1664,15 @@ func (m model) View() string {
 		content := fpBoxStyle.Render(m.filepicker.View())
 		help := "\n" + renderFilePickerHelp()
 		return appStyle.Render(title + "\n\n" + content + help)
+	}
+	if m.state == stateGroupPrompt {
+		title := "New Group"
+		if m.groupAction == "rename" {
+			title = "Rename Group"
+		}
+		box := formBoxStyle.Render(formTitleStyle.Render(title) + "\n\n" + m.groupInput.View())
+		help := "\n" + helpBarStyle.Render(helpEntry("enter", "save")+" | "+helpEntry("esc", "cancel"))
+		return appStyle.Render(box + help)
 	}
 	// Form View
 	var formTitle string
@@ -1418,7 +1711,7 @@ func (m model) View() string {
 	formContent.WriteString(m.inputs[5].View() + "\n")
 
 	formContent.WriteString("\n")
-	formContent.WriteString(lipgloss.NewStyle().Foreground(colorSecondary).Bold(true).Render("  ORGANIZATION") + "\n")
+	formContent.WriteString(lipgloss.NewStyle().Foreground(colorSecondary).Bold(true).Render("  GROUPS") + "\n")
 	formContent.WriteString(divider + "\n")
 	if m.groupCustom {
 		formContent.WriteString(m.inputs[6].View() + "\n")
@@ -1434,6 +1727,28 @@ func (m model) View() string {
 			groupValue = m.groupOptions[m.groupIndex]
 		}
 		formContent.WriteString(groupLabelStyle.Render("  Group       ") + groupValueStyle.Render("◀ "+groupValue+" ▶") + "\n")
+	}
+
+	if m.selectedHost != nil {
+		label := "Delete Host"
+		if m.deleteArmed {
+			label = "Press Enter to Confirm Delete"
+		}
+		deleteStyle := lipgloss.NewStyle().
+			Foreground(colorText).
+			Background(colorDanger).
+			Bold(true).
+			Padding(0, 1)
+		if !m.deleteFocus {
+			deleteStyle = lipgloss.NewStyle().
+				Foreground(colorDimText).
+				Background(colorSubtle).
+				Padding(0, 1)
+		}
+		formContent.WriteString("\n  " + deleteStyle.Render(label) + "\n")
+		if m.deleteArmed {
+			formContent.WriteString("  " + formHintStyle.Render("Esc to cancel") + "\n")
+		}
 	}
 
 	// Test status
@@ -1461,6 +1776,8 @@ func (m model) View() string {
 
 func (m *model) focusInputs() tea.Cmd {
 	cmds := make([]tea.Cmd, len(m.inputs))
+	m.deleteFocus = false
+	m.deleteArmed = false
 	for i := 0; i < len(m.inputs); i++ {
 		if i == m.focusIndex {
 			m.keyPickFocus = false
@@ -1482,10 +1799,15 @@ func (m *model) resetForm() {
 	m.focusIndex = 0
 	m.formError = ""
 	m.keyPickFocus = false
+	m.deleteFocus = false
+	m.deleteArmed = false
 	for i := range m.inputs {
 		m.inputs[i].Reset()
 		m.inputs[i].Blur()
 	}
+	// New host defaults.
+	m.inputs[3].SetValue("22")
+	m.inputs[3].CursorEnd()
 	m.inputs[0].Focus()
 }
 
@@ -1514,9 +1836,21 @@ func (m *model) populateForm(h Host) {
 }
 
 func (m *model) saveFromForm() error {
+	alias := strings.TrimSpace(m.inputs[0].Value())
+	if alias == "" {
+		return fmt.Errorf("alias is required")
+	}
+	for i := range m.rawHosts {
+		if strings.EqualFold(strings.TrimSpace(m.rawHosts[i].Alias), alias) {
+			if m.selectedHost == nil || m.rawHosts[i].ID != m.selectedHost.ID {
+				return fmt.Errorf("alias already exists: %s", alias)
+			}
+		}
+	}
+
 	newHost := Host{
 		ID:           "",
-		Alias:        m.inputs[0].Value(),
+		Alias:        alias,
 		Hostname:     m.inputs[1].Value(),
 		User:         m.inputs[2].Value(),
 		Port:         m.inputs[3].Value(),
@@ -1578,6 +1912,39 @@ func (m *model) saveFromForm() error {
 
 func (m *model) save() {
 	saveConfig(m.rawGroups, m.rawHosts)
+}
+
+func (m *model) deleteGroupByID(groupID string) {
+	for idx := range m.rawGroups {
+		if m.rawGroups[idx].ID == groupID {
+			m.rawGroups = append(m.rawGroups[:idx], m.rawGroups[idx+1:]...)
+			break
+		}
+	}
+	for i := range m.rawHosts {
+		if m.rawHosts[i].GroupID == groupID {
+			m.rawHosts[i].GroupID = ""
+		}
+	}
+	m.list.SetItems(flattenHosts(m.rawGroups, m.rawHosts))
+	m.save()
+}
+
+func (m *model) openGroupPrompt(action, targetID, initialName string) {
+	m.state = stateGroupPrompt
+	m.groupAction = action
+	m.groupTarget = targetID
+	m.groupInput.Reset()
+	m.groupInput.SetValue(initialName)
+	m.groupInput.CursorEnd()
+	m.groupInput.Focus()
+}
+
+func (m *model) clearListDeleteConfirm() {
+	m.listDeleteArmed = false
+	m.listDeleteID = ""
+	m.listDeleteType = ""
+	m.listDeleteLabel = ""
 }
 
 func buildSSHArgs(h Host, forceTTY bool, remoteCmd string) []string {

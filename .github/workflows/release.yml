@@ -17,19 +17,19 @@ jobs:
         include:
           - goos: linux
             goarch: amd64
-            output_name: asshi-linux-amd64
+            output_name: assho-linux-amd64
           - goos: linux
             goarch: arm64
-            output_name: asshi-linux-arm64
+            output_name: assho-linux-arm64
           - goos: darwin
             goarch: amd64
-            output_name: asshi-darwin-amd64
+            output_name: assho-darwin-amd64
           - goos: darwin
             goarch: arm64
-            output_name: asshi-darwin-arm64
+            output_name: assho-darwin-arm64
           - goos: windows
             goarch: amd64
-            output_name: asshi-windows-amd64.exe
+            output_name: assho-windows-amd64.exe
 
     steps:
       - name: Checkout code

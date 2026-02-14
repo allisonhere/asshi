@@ -1,4 +1,4 @@
-module github.com/allisonhere/asshi
+module github.com/allisonhere/assho
 
 go 1.25.6
 

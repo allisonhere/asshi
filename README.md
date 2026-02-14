@@ -1,46 +1,46 @@
-# Asshi (A Simple SSH Interface)
+# Assho (A Simple SSH Interface)
 
-Asshi is a terminal-based SSH session manager built with Go and Bubble Tea. It allows you to save, manage, and quickly connect to your SSH hosts without remembering IP addresses or flags.
+Assho is a terminal-based SSH session manager built with Go and Bubble Tea. It allows you to save, manage, and quickly connect to your SSH hosts without remembering IP addresses or flags.
 
 ## Installation
 
 ### Option 1: One-Line Install (Recommended)
 Installs to `/usr/local/bin` and runs immediately:
 ```bash
-curl -sL https://raw.githubusercontent.com/allisonhere/asshi/main/install.sh | bash
+curl -sL https://raw.githubusercontent.com/allisonhere/assho/main/install.sh | bash
 ```
 
 ### Option 2: Go Install
 ```bash
-go install github.com/allisonhere/asshi@latest
+go install github.com/allisonhere/assho@latest
 ```
 *Make sure `~/go/bin` is in your `PATH`.*
 
-### Option 2: Install from Source (System-wide)
-To install `asshi` to `/usr/local/bin` so it's available everywhere:
+### Option 3: Install from Source (System-wide)
+To install `assho` to `/usr/local/bin` so it's available everywhere:
 
 ```bash
-git clone https://github.com/allisonhere/asshi.git
-cd asshi
+git clone https://github.com/allisonhere/assho.git
+cd assho
 sudo make install
 ```
 
-### Option 3: Manual Build (Cross-Platform)
+### Option 4: Manual Build (Cross-Platform)
 You can build the binary for your specific OS:
 
 ```bash
 # Linux / macOS
-go build -o asshi main.go
+go build -o assho main.go
 
 # Windows
-GOOS=windows GOARCH=amd64 go build -o asshi.exe main.go
+GOOS=windows GOARCH=amd64 go build -o assho.exe main.go
 ```
 
 ## Usage
 
 Run the tool:
 ```bash
-asshi
+assho
 ```
 
 ### Controls
@@ -57,10 +57,10 @@ asshi
 - `Tab` / `Down`: Next field.
 - `Shift+Tab` / `Up`: Previous field.
 - `Ctrl+t`: **Test Connection** (tries to connect and exit).
-- `Ctrl+f`: **File Picker** (when on Identity File field).
+- `Tab` to **Pick** on Identity File, then `Enter`: **File Picker**.
 - `Enter`: Save (if on last field) or Next field.
 - `Esc`: Cancel.
 
 ## Configuration
 
-Sessions are stored in `~/.config/asshi/hosts.json`.
+Sessions are stored in `~/.config/assho/hosts.json`.

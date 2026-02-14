@@ -1,6 +1,6 @@
 .PHONY: all build install uninstall run clean
 
-BINARY_NAME=asshi
+BINARY_NAME=assho
 INSTALL_PATH=/usr/local/bin
 
 all: build

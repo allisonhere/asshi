@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-REPO="allisonhere/asshi"
-BINARY="asshi"
+REPO="allisonhere/assho"
+BINARY="assho"
 INSTALL_DIR="/usr/local/bin"
 
 # Detect OS and Arch
@@ -19,7 +19,7 @@ else
 fi
 
 # Construct asset name (matches what we built in release.yml)
-# e.g., asshi-linux-amd64
+# e.g., assho-linux-amd64
 ASSET_NAME="${BINARY}-${OS}-${ARCH}"
 
 echo "Detected: $OS $ARCH"
@@ -48,5 +48,5 @@ else
     exit 1
 fi
 
-echo "Running asshi..."
-exec "$BINARY"
+echo "Running assho..."
+exec "$INSTALL_DIR/$BINARY"

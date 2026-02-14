@@ -14,7 +14,7 @@ NC='\033[0m'
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DIST_DIR="$PROJECT_DIR/dist"
-BINARY_NAME="asshi"
+BINARY_NAME="assho"
 
 # Timing
 STEP_START=0
@@ -27,7 +27,7 @@ TOTAL_START=0
 print_header() {
     clear
     echo -e "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║${NC}             ${BOLD}${CYAN}Asshi Release Builder${NC}                         ${BLUE}║${NC}"
+    echo -e "${BLUE}║${NC}             ${BOLD}${CYAN}Assho Release Builder${NC}                         ${BLUE}║${NC}"
     echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -156,11 +156,11 @@ build_all() {
     print_substep "Building cross-platform binaries..."
     
     local platforms=(
-        "linux/amd64/asshi-linux-amd64"
-        "linux/arm64/asshi-linux-arm64"
-        "darwin/amd64/asshi-darwin-amd64"
-        "darwin/arm64/asshi-darwin-arm64"
-        "windows/amd64/asshi-windows-amd64.exe"
+        "linux/amd64/assho-linux-amd64"
+        "linux/arm64/assho-linux-arm64"
+        "darwin/amd64/assho-darwin-amd64"
+        "darwin/arm64/assho-darwin-arm64"
+        "windows/amd64/assho-windows-amd64.exe"
     )
 
     for plat in "${platforms[@]}"; do
@@ -223,20 +223,20 @@ create_release() {
 
     print_substep "Creating GitHub release..."
     gh release create "$VERSION" \
-        --title "Asshi $VERSION" \
+        --title "Assho $VERSION" \
         --notes "Release $VERSION" \
-        --repo allisonhere/asshi > /dev/null 2>&1
+        --repo allisonhere/assho > /dev/null 2>&1
     print_success "Release created"
 
     print_substep "Uploading assets..."
     for f in "$DIST_DIR"/*; do
         if [ -f "$f" ]; then
-            gh release upload "$VERSION" "$f" --repo allisonhere/asshi > /dev/null 2>&1
+            gh release upload "$VERSION" "$f" --repo allisonhere/assho > /dev/null 2>&1
             print_file_size "$f"
         fi
     done
     print_success "Assets uploaded"
-    echo -e "  ${GREEN}→${NC} https://github.com/allisonhere/asshi/releases/tag/$VERSION"
+    echo -e "  ${GREEN}→${NC} https://github.com/allisonhere/assho/releases/tag/$VERSION"
 }
 
 full_release() {
