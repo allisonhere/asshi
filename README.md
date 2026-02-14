@@ -1,4 +1,4 @@
-# Assho (A Simple SSH Interface)
+# Assho (Another SSH Organizer)
 
 ## Screenshot
 
