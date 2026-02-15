@@ -21,7 +21,7 @@ func TestLoadConfigLegacyHostsOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	groups, hosts, err := loadConfig()
+	groups, hosts, _, err := loadConfig()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestLoadConfigNewPathHostsOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	groups, hosts, err := loadConfig()
+	groups, hosts, _, err := loadConfig()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestSaveConfigWritesVersion(t *testing.T) {
 
 	groups := []Group{{ID: "g1", Name: "prod", Expanded: true}}
 	hosts := []Host{{ID: "h1", Alias: "srv", Hostname: "srv", User: "root", Port: "22", GroupID: "g1", Password: "secret"}}
-	if err := saveConfig(groups, hosts); err != nil {
+	if err := saveConfig(groups, hosts, nil); err != nil {
 		t.Fatalf("saveConfig failed: %v", err)
 	}
 
@@ -102,7 +102,7 @@ func TestLoadConfigMigratesLegacyPathToNewPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, hosts, err := loadConfig()
+	_, hosts, _, err := loadConfig()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

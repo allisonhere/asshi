@@ -52,7 +52,13 @@ assho
 - `d`: **Delete** selected session.
 - `Enter`: **Connect** to selected session.
 - `/`: **Filter** list (search).
+- `h`: **History** — view recent connections.
 - `q`: **Quit**.
+
+**History View:**
+- `Enter`: **Connect** to selected session.
+- `e`: **Edit** selected session.
+- `h` / `Esc`: **Back** to list.
 
 **Form (Add/Edit):**
 - `Tab` / `Down`: Next field.
