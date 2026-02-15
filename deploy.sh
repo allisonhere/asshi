@@ -190,10 +190,7 @@ commit_changes() {
 
 push_to_origin() {
   print_substep "Pushing to origin..."
-  git push origin main >/dev/null 2>&1 &
-  local pid=$!
-  spinner $pid "Pushing..."
-  if wait $pid; then
+  if git push origin main; then
     print_success "Pushed to origin"
   else
     print_error "Push failed (check remote/auth)"
