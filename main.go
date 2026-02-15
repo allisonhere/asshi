@@ -10,7 +10,14 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+var version = "dev"
+
 func main() {
+	if len(os.Args) == 2 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+		fmt.Println("assho " + version)
+		return
+	}
+
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
 	m, err := p.Run()
 	if err != nil {
@@ -61,7 +68,8 @@ func main() {
 		argv := append([]string{binary}, args...)
 
 		if err := syscall.Exec(finalBinaryPath, argv, env); err != nil {
-			panic(err)
+			fmt.Fprintf(os.Stderr, "Error: failed to exec SSH: %v\n", err)
+			os.Exit(1)
 		}
 	}
 }

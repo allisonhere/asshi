@@ -25,7 +25,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case scanDockerMsg:
 		m.scanning = false
 		if msg.err != nil {
-			// Handle error
+			m.statusMessage = fmt.Sprintf("Scan failed: %v", msg.err)
+			m.statusIsError = true
 		} else {
 			if msg.hostIndex >= 0 && msg.hostIndex < len(m.rawHosts) {
 				m.rawHosts[msg.hostIndex].Containers = msg.containers

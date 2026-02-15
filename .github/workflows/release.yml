@@ -48,7 +48,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           mkdir -p build
-          go build -ldflags="-s -w" -o build/${{ matrix.output_name }} .
+          go build -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" -o build/${{ matrix.output_name }} .
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

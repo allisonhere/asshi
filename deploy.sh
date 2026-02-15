@@ -163,7 +163,7 @@ build_all() {
 
   for plat in "${platforms[@]}"; do
     IFS="/" read -r os arch name <<<"$plat"
-    GOOS=$os GOARCH=$arch go build -ldflags="-s -w" -o "$DIST_DIR/$name" . >/dev/null 2>&1 &
+    GOOS=$os GOARCH=$arch go build -ldflags="-s -w -X main.version=$VERSION" -o "$DIST_DIR/$name" . >/dev/null 2>&1 &
     local pid=$!
     spinner $pid "Building for $os/$arch..."
     wait $pid
