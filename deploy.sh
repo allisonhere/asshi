@@ -316,13 +316,13 @@ main_menu() {
         read -p "  Choose [0-7]: " choice
 
         case $choice in
-            1) bump_version ;;
-            2) commit_changes ;;
-            3) push_to_origin ;;
-            4) clean_dist ;;
-            5) build_all ;;
-            6) create_release ;;
-            7) full_release ;;
+            1) bump_version || true ;;
+            2) commit_changes || true ;;
+            3) push_to_origin || true ;;
+            4) clean_dist || true ;;
+            5) build_all || true ;;
+            6) create_release || true ;;
+            7) full_release || true ;;
             0) echo -e "\n  ${DIM}Bye!${NC}\n"; exit 0 ;;
             *) print_error "Invalid choice" ;;
         esac
