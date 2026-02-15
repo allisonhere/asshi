@@ -2,15 +2,25 @@ package main
 
 import (
 	"strings"
+	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+type aboutTickMsg struct{}
+
+func aboutTick() tea.Cmd {
+	return tea.Tick(150*time.Millisecond, func(_ time.Time) tea.Msg {
+		return aboutTickMsg{}
+	})
+}
 
 func (m model) View() string {
 	if m.quitting {
 		return ""
 	}
-	if m.state == stateList {
+	if m.state == stateList || m.aboutOpen {
 		header := renderHeader(len(m.rawHosts), countContainers(m.rawHosts))
 
 		var scanStatus string
@@ -39,7 +49,23 @@ func (m model) View() string {
 			content += "\n" + testFailStyle.Render(" Config warning: "+m.err.Error())
 		}
 		help := "\n" + renderListHelp()
-		return appStyle.Render(content + help)
+		bg := appStyle.Render(content + help)
+
+		if m.aboutOpen {
+			modal := renderAboutModal(m.aboutFrame)
+			overlay := lipgloss.Place(
+				m.width, m.height,
+				lipgloss.Center, lipgloss.Center,
+				modal,
+				lipgloss.WithWhitespaceChars(" "),
+				lipgloss.WithWhitespaceForeground(lipgloss.Color("#000000")),
+			)
+			// Dim the background by placing the modal on top
+			_ = bg
+			return overlay
+		}
+
+		return bg
 	}
 	if m.state == stateFilePicker {
 		title := formTitleStyle.Render("📂 Select Identity File")
@@ -67,7 +93,7 @@ func (m model) View() string {
 	if m.selectedHost == nil {
 		formTitle = formTitleStyle.Render("✨ New Session")
 	} else {
-		formTitle = formTitleStyle.Render("✏️  Edit Session")
+		formTitle = formTitleStyle.Render("✎ Edit Session")
 	}
 
 	divider := formDividerStyle.Render(strings.Repeat("─", 40))
@@ -158,4 +184,126 @@ func (m model) View() string {
 	help := "\n" + renderFormHelp()
 
 	return appStyle.Render(form + help)
+}
+
+func renderAboutModal(frame int) string {
+	var b strings.Builder
+
+	// Gradient colors: hot pink -> violet -> blue -> cyan (from anim.sh)
+	c1 := lipgloss.Color("#FF50DC")
+	c2 := lipgloss.Color("#DC5AFF")
+	c3 := lipgloss.Color("#AA6EFF")
+	c4 := lipgloss.Color("#788CFF")
+	c5 := lipgloss.Color("#50BEFF")
+	c6 := lipgloss.Color("#46EBFF")
+
+	// Eye animation cycle (24 frames total):
+	//   0-14: open eye, glow alternating
+	//  15-20: open eye, charge alternating
+	//     21: half eye
+	//     22: closed eye
+	//     23: half eye
+	cycleFrame := frame % 24
+	eye := "<_>"
+	var eyeColor lipgloss.Color
+	switch {
+	case cycleFrame <= 14:
+		if cycleFrame%2 == 0 {
+			eyeColor = lipgloss.Color("#FFFFFF")
+		} else {
+			eyeColor = lipgloss.Color("#AAFFFF")
+		}
+	case cycleFrame <= 20:
+		if cycleFrame%2 == 0 {
+			eyeColor = lipgloss.Color("#FFFFB4")
+		} else {
+			eyeColor = lipgloss.Color("#FFFFFF")
+		}
+	case cycleFrame == 21 || cycleFrame == 23:
+		eye = "-_-"
+		eyeColor = lipgloss.Color("#F5F5F5")
+	case cycleFrame == 22:
+		eye = "---"
+		eyeColor = lipgloss.Color("#F5F5F5")
+	}
+
+	// Logo lines matching anim.sh
+	l1 := `   _____                  ___ ___         `
+	l2 := `  /  _  \   ______ ______/   |   \  ____  `
+	l3 := ` /  /_\  \ /  ___//  ___/    ~    \/  _ \ `
+	l4pre := `/     |    \___ \ \___\      Y    `
+	l5 := `\____|__  /____  >____  >\___|_  / \____/ `
+	l6 := `        \/     \/     \/       \/         `
+
+	eyeStyle := lipgloss.NewStyle().Foreground(eyeColor).Bold(true)
+	l4 := l4pre + "(  " + eyeStyle.Render(eye) + lipgloss.NewStyle().Foreground(c4).Bold(true).Render(" )")
+
+	render := func(text string, color lipgloss.Color) string {
+		return lipgloss.NewStyle().Foreground(color).Bold(true).Render(text)
+	}
+
+	b.WriteString(render(l1, c1) + "\n")
+	b.WriteString(render(l2, c2) + "\n")
+	b.WriteString(render(l3, c3) + "\n")
+	b.WriteString(render(l4, c4) + "\n")
+	b.WriteString(render(l5, c5) + "\n")
+	b.WriteString(render(l6, c6) + "\n")
+
+	// Tagline
+	tagline := lipgloss.NewStyle().Foreground(colorDimText).Italic(true).
+		Render("          Another SSH Host Organizer")
+	b.WriteString("\n" + tagline + "\n")
+
+	// Divider
+	divider := lipgloss.NewStyle().Foreground(colorSubtle).Render(strings.Repeat("━", 44))
+	b.WriteString("\n" + divider + "\n\n")
+
+	// Info rows
+	labelStyle := lipgloss.NewStyle().Foreground(colorSecondary).Bold(true).Width(14).Align(lipgloss.Right)
+	valueStyle := lipgloss.NewStyle().Foreground(colorText)
+	mutedStyle := lipgloss.NewStyle().Foreground(colorDimText)
+
+	row := func(label, value string) string {
+		return labelStyle.Render(label) + "  " + valueStyle.Render(value) + "\n"
+	}
+
+	b.WriteString(row("Version", version))
+	b.WriteString(row("Author", "Allison"))
+	b.WriteString(row("License", "MIT"))
+	b.WriteString("\n")
+
+	linkStyle := lipgloss.NewStyle().Foreground(colorHighlight).Underline(true)
+	b.WriteString(labelStyle.Render("Source") + "  " + linkStyle.Render("github.com/allisonhere/assho") + "\n")
+	b.WriteString("\n" + divider + "\n\n")
+
+	// Built with
+	b.WriteString(mutedStyle.Render("Built with") + " ")
+	techs := []struct {
+		name  string
+		color lipgloss.Color
+	}{
+		{"Go", lipgloss.Color("#00ADD8")},
+		{"Bubble Tea", colorPrimary},
+		{"Lip Gloss", lipgloss.Color("#F472B6")},
+	}
+	for i, t := range techs {
+		b.WriteString(lipgloss.NewStyle().Foreground(t.color).Bold(true).Render(t.name))
+		if i < len(techs)-1 {
+			b.WriteString(mutedStyle.Render(" · "))
+		}
+	}
+	b.WriteString("\n\n")
+
+	help := helpKeyStyle.Render("esc") + " " + helpDescStyle.Render("close")
+	b.WriteString(help)
+
+	// Wrap in a bordered box
+	modalBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPrimary).
+		Padding(1, 3).
+		Background(lipgloss.Color("#0D0D0D")).
+		Render(b.String())
+
+	return modalBox
 }

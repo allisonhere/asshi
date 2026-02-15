@@ -18,6 +18,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case spinner.TickMsg:
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
+	case aboutTickMsg:
+		if m.aboutOpen {
+			m.aboutFrame++
+			return m, aboutTick()
+		}
+		return m, nil
 	case testConnectionMsg:
 		m.testStatus, m.testResult = formatTestStatus(msg.err)
 		m.testing = false
@@ -47,6 +53,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// Modal about overlay intercepts all keys when open
+		if m.aboutOpen {
+			switch msg.String() {
+			case "ctrl+c":
+				m.quitting = true
+				return m, tea.Quit
+			case "a", "esc", "q":
+				m.aboutOpen = false
+				return m, nil
+			}
+			return m, nil
+		}
 		if m.state == stateList {
 			if m.list.FilterState() == list.Filtering {
 				break // Let the list handle input if filtering
@@ -249,6 +267,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.rebuildHistoryList()
 				m.state = stateHistory
 				return m, nil
+			case "a":
+				m.aboutOpen = true
+				m.aboutFrame = 0
+				return m, aboutTick()
 			case "g":
 				m.openGroupPrompt("create", "", "")
 				return m, nil

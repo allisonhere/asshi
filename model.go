@@ -62,6 +62,8 @@ type model struct {
 	statusIsError   bool
 	history         []HistoryEntry
 	historyList     list.Model
+	aboutOpen       bool
+	aboutFrame      int
 }
 
 // Helper to flatten the tree for list view
