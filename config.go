@@ -396,8 +396,14 @@ func saveConfig(groups []Group, hosts []Host, history []HistoryEntry) error {
 	if _, err := f.Write(bytes); err != nil {
 		return err
 	}
+	if err := f.Chmod(0600); err != nil {
+		return err
+	}
 	if err := f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmpPath, path)
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0600)
 }

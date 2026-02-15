@@ -52,5 +52,4 @@ jobs:
           go test -coverprofile=coverage.out ./...
           total="$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')"
           echo "Total coverage: ${total}%"
-          awk -v cov="$total" 'BEGIN { if (cov < 10.0) exit 1 }'
-
+          awk -v cov="$total" 'BEGIN { if (cov < 25.0) exit 1 }'

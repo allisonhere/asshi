@@ -85,6 +85,14 @@ func TestSaveConfigWritesVersion(t *testing.T) {
 	if len(cfg.Hosts) != 1 || cfg.Hosts[0].Password != "" {
 		t.Fatalf("expected persisted hosts with scrubbed password, got %+v", cfg.Hosts)
 	}
+
+	info, err := os.Stat(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("expected permissions 0600, got %04o", info.Mode().Perm())
+	}
 }
 
 func TestLoadConfigMigratesLegacyPathToNewPath(t *testing.T) {
@@ -111,8 +119,12 @@ func TestLoadConfigMigratesLegacyPathToNewPath(t *testing.T) {
 	}
 
 	newPath := filepath.Join(tmp, ".config", "assho", "hosts.json")
-	if _, err := os.Stat(newPath); err != nil {
+	info, err := os.Stat(newPath)
+	if err != nil {
 		t.Fatalf("expected migrated config at new path, got err: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("expected migrated permissions 0600, got %04o", info.Mode().Perm())
 	}
 }
 
