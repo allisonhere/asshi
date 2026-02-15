@@ -64,6 +64,7 @@ type model struct {
 	historyList     list.Model
 	aboutOpen       bool
 	aboutFrame      int
+	headerFrame     int
 }
 
 // Helper to flatten the tree for list view
@@ -209,7 +210,7 @@ func initialModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	return m.spinner.Tick
+	return tea.Batch(m.spinner.Tick, headerTick())
 }
 
 // --- Finder Helpers ---

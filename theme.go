@@ -146,39 +146,15 @@ var (
 
 // --- ASCII Art Header ---
 
-func renderHeader(hostCount int, containerCount int) string {
-	lines := []string{
-		`   _____                  ___ ___         `,
-		`  /  _  \   ______ ______/   |   \  ____  `,
-		` /  /_\  \ /  ___//  ___/    ~    \/  _ \ `,
-		`/    |    \\___ \ \___ \\    Y    (  <_> )`,
-		`\____|__  /____  >____  >\___|_  / \____/ `,
-		`        \/     \/     \/       \/         `,
-	}
+func renderHeader(frame int, hostCount int, containerCount int) string {
+	logo := renderLogo(frame)
 
-	colors := []lipgloss.Color{
-		colorPrimary,   // purple
-		colorPrimary,   // purple
-		colorHighlight, // light purple
-		colorHighlight, // light purple
-		colorSecondary, // cyan
-		colorSecondary, // cyan
-	}
-
-	var logo strings.Builder
-	maxLineWidth := 0
-	for i, line := range lines {
-		style := lipgloss.NewStyle().Foreground(colors[i]).Bold(true)
-		logo.WriteString("  " + style.Render(line) + "\n")
-		if w := lipgloss.Width(line); w > maxLineWidth {
-			maxLineWidth = w
-		}
-	}
 	taglinePlain := "Another SSH Organizer"
 	tagline := lipgloss.NewStyle().
 		Foreground(colorDimText).
 		Render("Another " + lipgloss.NewStyle().Italic(true).Render("SSH") + " Organizer")
-	taglinePad := (maxLineWidth + 2) - lipgloss.Width(taglinePlain)
+	// Logo lines are ~44 chars wide; right-align tagline
+	taglinePad := 44 - lipgloss.Width(taglinePlain)
 	if taglinePad < 0 {
 		taglinePad = 0
 	}
@@ -189,7 +165,7 @@ func renderHeader(hostCount int, containerCount int) string {
 		stats += headerDimStyle.Render(fmt.Sprintf(" · %d containers", containerCount))
 	}
 
-	return logo.String() + tagline + "\n" + stats + "\n"
+	return logo + tagline + "\n" + stats + "\n"
 }
 
 // --- Help Bar ---

@@ -24,6 +24,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, aboutTick()
 		}
 		return m, nil
+	case headerTickMsg:
+		if m.state == stateList && !m.aboutOpen {
+			m.headerFrame++
+		}
+		return m, headerTick()
 	case testConnectionMsg:
 		m.testStatus, m.testResult = formatTestStatus(msg.err)
 		m.testing = false

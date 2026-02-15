@@ -16,12 +16,20 @@ func aboutTick() tea.Cmd {
 	})
 }
 
+type headerTickMsg struct{}
+
+func headerTick() tea.Cmd {
+	return tea.Tick(150*time.Millisecond, func(_ time.Time) tea.Msg {
+		return headerTickMsg{}
+	})
+}
+
 func (m model) View() string {
 	if m.quitting {
 		return ""
 	}
 	if m.state == stateList || m.aboutOpen {
-		header := renderHeader(len(m.rawHosts), countContainers(m.rawHosts))
+		header := renderHeader(m.headerFrame, len(m.rawHosts), countContainers(m.rawHosts))
 
 		var scanStatus string
 		if m.scanning {
@@ -186,7 +194,7 @@ func (m model) View() string {
 	return appStyle.Render(form + help)
 }
 
-func renderAboutModal(frame int) string {
+func renderLogo(frame int) string {
 	var b strings.Builder
 
 	// Gradient colors: hot pink -> violet -> blue -> cyan (from anim.sh)
@@ -248,6 +256,14 @@ func renderAboutModal(frame int) string {
 	b.WriteString(render(l4, c4) + "\n")
 	b.WriteString(render(l5, c5) + "\n")
 	b.WriteString(render(l6, c6) + "\n")
+
+	return b.String()
+}
+
+func renderAboutModal(frame int) string {
+	var b strings.Builder
+
+	b.WriteString(renderLogo(frame))
 
 	// Tagline
 	tagline := lipgloss.NewStyle().Foreground(colorDimText).Italic(true).
