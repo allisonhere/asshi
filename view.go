@@ -56,7 +56,7 @@ func (m model) View() string {
 		if m.err != nil {
 			content += "\n" + testFailStyle.Render(" Config warning: "+m.err.Error())
 		}
-		help := "\n" + renderListHelp()
+		help := "\n" + renderListHelp(m.list.SelectedItem())
 		bg := appStyle.Render(content + help)
 
 		if m.aboutOpen {

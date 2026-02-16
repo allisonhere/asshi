@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -174,20 +175,44 @@ func helpEntry(key, desc string) string {
 	return helpKeyStyle.Render(key) + " " + helpDescStyle.Render(desc)
 }
 
-func renderListHelp() string {
-	entries := []string{
+func renderListHelp(selected list.Item) string {
+	var contextEntries []string
+
+	switch item := selected.(type) {
+	case Host:
+		if item.IsContainer {
+			contextEntries = []string{
+				helpEntry("enter", "connect"),
+			}
+		} else {
+			contextEntries = []string{
+				helpEntry("enter", "connect"),
+				helpEntry("e", "edit"),
+				helpEntry("d", "delete"),
+				helpEntry("space", "expand"),
+				helpEntry("ctrl+d", "scan"),
+				helpEntry("⇧↑↓", "move"),
+			}
+		}
+	case groupItem:
+		contextEntries = []string{
+			helpEntry("enter", "toggle"),
+			helpEntry("r", "rename"),
+			helpEntry("d", "delete"),
+			helpEntry("⇧↑↓", "move"),
+		}
+	}
+
+	baseEntries := []string{
 		helpEntry("n", "new"),
-		helpEntry("e", "edit"),
-		helpEntry("enter", "connect"),
 		helpEntry("/", "filter"),
-		helpEntry("space", "expand"),
-		helpEntry("ctrl+d", "scan"),
 		helpEntry("h", "history"),
 		helpEntry("i", "import"),
-		helpEntry("⇧↑↓", "move"),
 		helpEntry("a", "about"),
 		helpEntry("q", "quit"),
 	}
+
+	entries := append(contextEntries, baseEntries...)
 	sep := helpSepStyle.Render(" | ")
 	return helpBarStyle.Render(strings.Join(entries, sep))
 }
