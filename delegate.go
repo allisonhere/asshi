@@ -74,6 +74,9 @@ func (d hostDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 		}
 		desc = connStr
 
+		if h.ProxyJump != "" {
+			desc += " via " + h.ProxyJump
+		}
 		if len(h.Containers) > 0 {
 			desc += fmt.Sprintf(" [%d containers]", len(h.Containers))
 		}

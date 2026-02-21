@@ -238,22 +238,22 @@ func TestGroupSelectionHelpers(t *testing.T) {
 	if m.groupCustom {
 		t.Fatal("expected known group to be non-custom mode")
 	}
-	if m.inputs[6].Value() != "staging" {
-		t.Fatalf("expected selected group value 'staging', got %q", m.inputs[6].Value())
+	if m.inputs[7].Value() != "staging" {
+		t.Fatalf("expected selected group value 'staging', got %q", m.inputs[7].Value())
 	}
 
 	m.groupIndex = -1
 	m.applyGroupSelectionToInput()
-	if m.inputs[6].Value() != "(none)" {
-		t.Fatalf("expected clamped group value '(none)', got %q", m.inputs[6].Value())
+	if m.inputs[7].Value() != "(none)" {
+		t.Fatalf("expected clamped group value '(none)', got %q", m.inputs[7].Value())
 	}
 
 	m.groupCustom = true
-	m.inputs[6].SetValue("custom")
+	m.inputs[7].SetValue("custom")
 	m.groupIndex = 2
 	m.applyGroupSelectionToInput()
-	if m.inputs[6].Value() != "custom" {
-		t.Fatalf("expected custom value to remain unchanged, got %q", m.inputs[6].Value())
+	if m.inputs[7].Value() != "custom" {
+		t.Fatalf("expected custom value to remain unchanged, got %q", m.inputs[7].Value())
 	}
 }
 

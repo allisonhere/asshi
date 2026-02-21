@@ -164,9 +164,9 @@ func countContainers(hosts []Host) int {
 }
 
 func newFormInputs() []textinput.Model {
-	inputs := make([]textinput.Model, 7)
-	labels := []string{"Alias", "Hostname", "User", "Port", "Key File", "Password", "Group"}
-	placeholders := []string{"my-server", "192.168.1.100", "root", "22", "optional key path", "", "optional group name"}
+	inputs := make([]textinput.Model, 8)
+	labels := []string{"Alias", "Hostname", "User", "Port", "ProxyJump", "Key File", "Password", "Group"}
+	placeholders := []string{"my-server", "192.168.1.100", "root", "22", "user@bastion:port", "optional key path", "", "optional group name"}
 	for i := range inputs {
 		t := textinput.New()
 		t.Cursor.Style = lipgloss.NewStyle().Foreground(colorSecondary)
@@ -175,7 +175,7 @@ func newFormInputs() []textinput.Model {
 		t.TextStyle = lipgloss.NewStyle().Foreground(colorText)
 		t.Placeholder = placeholders[i]
 		t.PlaceholderStyle = lipgloss.NewStyle().Foreground(colorDimText)
-		if i == 5 {
+		if i == 6 {
 			t.EchoMode = textinput.EchoPassword
 			t.EchoCharacter = '•'
 			t.Placeholder = "••••••••"
@@ -340,10 +340,12 @@ func (m *model) populateForm(h Host) {
 	m.inputs[2].CursorEnd()
 	m.inputs[3].SetValue(h.Port)
 	m.inputs[3].CursorEnd()
-	m.inputs[4].SetValue(h.IdentityFile)
+	m.inputs[4].SetValue(h.ProxyJump)
 	m.inputs[4].CursorEnd()
-	m.inputs[5].SetValue(h.Password)
+	m.inputs[5].SetValue(h.IdentityFile)
 	m.inputs[5].CursorEnd()
+	m.inputs[7].SetValue(h.Password)
+	m.inputs[6].CursorEnd()
 	groupName := ""
 	if h.GroupID != "" {
 		if idx := findGroupIndexByID(m.rawGroups, h.GroupID); idx != -1 {
@@ -351,7 +353,7 @@ func (m *model) populateForm(h Host) {
 		}
 	}
 	m.buildGroupOptions(groupName)
-	m.inputs[6].CursorEnd()
+	m.inputs[7].CursorEnd()
 }
 
 func (m *model) saveFromForm() error {
@@ -375,10 +377,11 @@ func (m *model) saveFromForm() error {
 		Hostname:     m.inputs[1].Value(),
 		User:         m.inputs[2].Value(),
 		Port:         m.inputs[3].Value(),
-		IdentityFile: m.inputs[4].Value(),
-		Password:     m.inputs[5].Value(),
+		ProxyJump:    m.inputs[4].Value(),
+		IdentityFile: m.inputs[5].Value(),
+		Password:     m.inputs[6].Value(),
 	}
-	groupName := strings.TrimSpace(m.inputs[6].Value())
+	groupName := strings.TrimSpace(m.inputs[7].Value())
 	if !m.groupCustom {
 		if len(m.groupOptions) > 0 {
 			selected := m.groupOptions[m.groupIndex]
@@ -481,20 +484,20 @@ func (m *model) buildGroupOptions(selectedName string) {
 
 	target := strings.TrimSpace(selectedName)
 	if target == "" {
-		m.inputs[6].SetValue("(none)")
+		m.inputs[7].SetValue("(none)")
 		return
 	}
 	for i, opt := range m.groupOptions {
 		if strings.EqualFold(opt, target) {
 			m.groupIndex = i
-			m.inputs[6].SetValue(opt)
+			m.inputs[7].SetValue(opt)
 			return
 		}
 	}
 	// Unknown group name: switch to custom mode with the provided name.
 	m.groupCustom = true
 	m.groupIndex = len(m.groupOptions) - 1
-	m.inputs[6].SetValue(target)
+	m.inputs[7].SetValue(target)
 }
 
 func (m *model) applyGroupSelectionToInput() {
@@ -502,7 +505,7 @@ func (m *model) applyGroupSelectionToInput() {
 		return
 	}
 	if len(m.groupOptions) == 0 {
-		m.inputs[6].SetValue("(none)")
+		m.inputs[7].SetValue("(none)")
 		return
 	}
 	if m.groupIndex < 0 {
@@ -511,7 +514,7 @@ func (m *model) applyGroupSelectionToInput() {
 	if m.groupIndex >= len(m.groupOptions) {
 		m.groupIndex = len(m.groupOptions) - 1
 	}
-	m.inputs[6].SetValue(m.groupOptions[m.groupIndex])
+	m.inputs[7].SetValue(m.groupOptions[m.groupIndex])
 }
 
 func (m *model) deleteGroupByID(groupID string) error {

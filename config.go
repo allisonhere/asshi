@@ -26,6 +26,7 @@ type Host struct {
 	IdentityFile string `json:"identity_file,omitempty"`
 	Password     string `json:"password,omitempty"`
 	PasswordRef  string `json:"password_ref,omitempty"`
+	ProxyJump    string `json:"proxy_jump,omitempty"`
 	GroupID      string `json:"group_id,omitempty"`
 
 	// Docker Support

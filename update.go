@@ -78,7 +78,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusMessage = ""
 				m.statusIsError = false
 			}
-			if m.listDeleteArmed && msg.String() != "d" && msg.String() != "esc" {
+			if m.listDeleteArmed && msg.String() != "d" && msg.String() != "x" && msg.String() != "esc" {
 				m.clearListDeleteConfirm()
 			}
 			switch msg.String() {
@@ -326,10 +326,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "x":
 				if g, ok := m.list.SelectedItem().(groupItem); ok {
+					if !m.listDeleteArmed || m.listDeleteID != g.ID || m.listDeleteType != "group" {
+						m.listDeleteArmed = true
+						m.listDeleteID = g.ID
+						m.listDeleteType = "group"
+						m.listDeleteLabel = g.Name
+						return m, nil
+					}
 					if err := m.deleteGroupByID(g.ID); err != nil {
 						m.statusMessage = fmt.Sprintf("Failed to save group deletion: %v", err)
 						m.statusIsError = true
+						return m, nil
 					}
+					m.clearListDeleteConfirm()
 					return m, nil
 				}
 			}
@@ -371,30 +380,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.deleteArmed = false
 				return m, nil
 			case "tab", "down":
-				isTab := msg.String() == "tab"
 				if m.deleteFocus {
 					m.deleteArmed = false
 					return m, nil
 				}
-				if m.focusIndex == 6 && !m.groupCustom && !isTab {
-					if len(m.groupOptions) > 0 {
-						m.groupIndex = (m.groupIndex + 1) % len(m.groupOptions)
-						m.applyGroupSelectionToInput()
-					}
-					return m, nil
-				}
-				if m.focusIndex == 4 && !m.keyPickFocus {
+				if m.focusIndex == 5 && !m.keyPickFocus {
 					m.keyPickFocus = true
 					return m, nil
 				}
-				if m.focusIndex == 4 && m.keyPickFocus {
+				if m.focusIndex == 5 && m.keyPickFocus {
 					m.keyPickFocus = false
-					m.focusIndex = 5
+					m.focusIndex = 6
 					return m, m.focusInputs()
 				}
 				m.focusIndex++
 				if m.focusIndex >= len(m.inputs) {
-					if m.selectedHost != nil && isTab {
+					if m.selectedHost != nil {
 						m.focusIndex = len(m.inputs) - 1
 						m.deleteFocus = true
 						m.deleteArmed = false
@@ -412,29 +413,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.deleteArmed = false
 				return m, m.focusInputs()
 			case "shift+tab", "up":
-				isShiftTab := msg.String() == "shift+tab"
 				if m.deleteFocus {
 					m.deleteFocus = false
 					m.deleteArmed = false
 					m.focusIndex = len(m.inputs) - 1
 					return m, m.focusInputs()
 				}
-				if m.focusIndex == 6 && !m.groupCustom && !isShiftTab {
-					if len(m.groupOptions) > 0 {
-						m.groupIndex--
-						if m.groupIndex < 0 {
-							m.groupIndex = len(m.groupOptions) - 1
-						}
-						m.applyGroupSelectionToInput()
-					}
-					return m, nil
-				}
-				if m.focusIndex == 5 {
-					m.focusIndex = 4
+				if m.focusIndex == 6 {
+					m.focusIndex = 5
 					m.keyPickFocus = true
 					return m, nil
 				}
-				if m.focusIndex == 4 && m.keyPickFocus {
+				if m.focusIndex == 5 && m.keyPickFocus {
 					m.keyPickFocus = false
 					return m, m.focusInputs()
 				}
@@ -474,16 +464,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.deleteArmed = false
 					return m, nil
 				}
-				if m.focusIndex == 4 && m.keyPickFocus {
+				if m.focusIndex == 5 && m.keyPickFocus {
 					m.state = stateFilePicker
 					m.keyPickFocus = false
 					return m, m.filepicker.Init()
 				}
-				if m.focusIndex == 6 && !m.groupCustom {
+				if m.focusIndex == 7 && !m.groupCustom {
 					if len(m.groupOptions) > 0 && m.groupOptions[m.groupIndex] == "+ New group..." {
 						m.groupCustom = true
-						m.inputs[6].SetValue("")
-						m.inputs[6].Placeholder = "new group name"
+						m.inputs[7].SetValue("")
+						m.inputs[7].Placeholder = "new group name"
 						return m, m.focusInputs()
 					}
 				}
@@ -506,7 +496,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.deleteArmed = false
 				return m, m.focusInputs()
 			case "left":
-				if m.focusIndex == 6 && !m.groupCustom {
+				if m.focusIndex == 7 && !m.groupCustom {
 					if len(m.groupOptions) > 0 {
 						m.groupIndex--
 						if m.groupIndex < 0 {
@@ -517,7 +507,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			case "right":
-				if m.focusIndex == 6 && !m.groupCustom {
+				if m.focusIndex == 7 && !m.groupCustom {
 					if len(m.groupOptions) > 0 {
 						m.groupIndex = (m.groupIndex + 1) % len(m.groupOptions)
 						m.applyGroupSelectionToInput()
@@ -525,14 +515,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			default:
-				if m.focusIndex == 4 && m.keyPickFocus {
+				if m.focusIndex == 5 && m.keyPickFocus {
 					return m, nil
 				}
 				if m.deleteFocus {
 					m.deleteArmed = false
 					return m, nil
 				}
-				if m.focusIndex == 6 && !m.groupCustom {
+				if m.focusIndex == 7 && !m.groupCustom {
 					return m, nil
 				}
 				// Forward all other keys (typing, backspace, delete, etc.) to focused input

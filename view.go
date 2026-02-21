@@ -38,7 +38,7 @@ func (m model) View() string {
 		}
 		var deleteStatus string
 		if m.listDeleteArmed {
-			deleteStatus = "\n " + testFailStyle.Render("Press d again to delete "+m.listDeleteType+": "+m.listDeleteLabel+" (Esc to cancel)") + "\n"
+			deleteStatus = "\n " + testFailStyle.Render("Press again to confirm delete "+m.listDeleteType+": "+m.listDeleteLabel+" (Esc to cancel)") + "\n"
 		}
 
 		var importStatus string
@@ -113,7 +113,7 @@ func (m model) View() string {
 	// Connection section
 	formContent.WriteString(lipgloss.NewStyle().Foreground(colorSecondary).Bold(true).Render("  CONNECTION") + "\n")
 	formContent.WriteString(divider + "\n")
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 5; i++ {
 		formContent.WriteString(m.inputs[i].View() + "\n")
 	}
 
@@ -126,21 +126,21 @@ func (m model) View() string {
 		Background(colorSecondary).
 		Bold(true).
 		Padding(0, 1)
-	if m.focusIndex == 4 && m.keyPickFocus {
+	if m.focusIndex == 5 && m.keyPickFocus {
 		pickStyle = pickStyle.Background(colorPrimary)
 	}
-	formContent.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, m.inputs[4].View(), "  ", pickStyle.Render("Pick")) + "\n")
-	formContent.WriteString(m.inputs[5].View() + "\n")
+	formContent.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, m.inputs[5].View(), "  ", pickStyle.Render("Pick")) + "\n")
+	formContent.WriteString(m.inputs[6].View() + "\n")
 
 	formContent.WriteString("\n")
 	formContent.WriteString(lipgloss.NewStyle().Foreground(colorSecondary).Bold(true).Render("  GROUPS") + "\n")
 	formContent.WriteString(divider + "\n")
 	if m.groupCustom {
-		formContent.WriteString(m.inputs[6].View() + "\n")
+		formContent.WriteString(m.inputs[7].View() + "\n")
 	} else {
 		groupLabelStyle := lipgloss.NewStyle().Foreground(colorMuted)
 		groupValueStyle := lipgloss.NewStyle().Foreground(colorDimText)
-		if m.focusIndex == 6 {
+		if m.focusIndex == 7 {
 			groupLabelStyle = lipgloss.NewStyle().Foreground(colorPrimary).Bold(true)
 			groupValueStyle = lipgloss.NewStyle().Foreground(colorText)
 		}

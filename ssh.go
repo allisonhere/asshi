@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -76,6 +75,9 @@ func testConnection(h Host) tea.Cmd {
 		}
 		if h.IdentityFile != "" {
 			args = append(args, "-i", expandPath(h.IdentityFile))
+		}
+		if h.ProxyJump != "" {
+			args = append(args, "-J", h.ProxyJump)
 		}
 		args = append(args, h.Hostname, "exit")
 
@@ -197,6 +199,9 @@ func buildSSHArgs(h Host, forceTTY bool, remoteCmd string) []string {
 	if h.IdentityFile != "" {
 		args = append(args, "-i", expandPath(h.IdentityFile))
 	}
+	if h.ProxyJump != "" {
+		args = append(args, "-J", h.ProxyJump)
+	}
 	args = append(args, h.Hostname)
 	if remoteCmd != "" {
 		args = append(args, remoteCmd)
@@ -219,16 +224,17 @@ func formatTestStatus(err error) (string, bool) {
 	if err == nil {
 		return "Connection successful", true
 	}
-	var keyErr *knownhosts.KeyError
-	if errors.As(err, &keyErr) {
-		if len(keyErr.Want) == 0 {
-			return "Host key is unknown. Run `ssh <host>` once or set ASSHO_INSECURE_TEST=1 to bypass for testing.", false
-		}
+	msg := err.Error()
+	if strings.Contains(msg, "REMOTE HOST IDENTIFICATION HAS CHANGED") {
 		return "Host key mismatch in ~/.ssh/known_hosts. Refusing to connect.", false
 	}
-	var revokedErr *knownhosts.RevokedError
-	if errors.As(err, &revokedErr) {
+	if strings.Contains(msg, "REVOKED HOST KEY") {
 		return "Host key is revoked in ~/.ssh/known_hosts.", false
 	}
-	return err.Error(), false
+	if strings.Contains(msg, "Host key verification failed") ||
+		strings.Contains(msg, "authenticity of host") ||
+		strings.Contains(msg, "No RSA host key is known") {
+		return "Host key is unknown. Run `ssh <host>` once or set ASSHO_INSECURE_TEST=1 to bypass for testing.", false
+	}
+	return msg, false
 }
